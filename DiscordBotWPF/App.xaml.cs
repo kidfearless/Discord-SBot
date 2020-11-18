@@ -223,7 +223,7 @@ namespace DiscordBotWPF
 			embed.WithThumbnailUrl(commit.User.Avatar);
 
 			DateTime.TryParse(commit.Created, out DateTime created);
-			embed.WithTimestamp(created);
+			embed.WithTimestamp(created.ToUniversalTime());
 
 			Client.SendMessageAsync(Channel, embed: embed).GetAwaiter().GetResult();
 		}
