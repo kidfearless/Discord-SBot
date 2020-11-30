@@ -31,7 +31,7 @@ namespace DiscordBotWPF
 		const int RESULTS_PER_PAGE = 50;
 		DiscordClient Client;
 		DiscordChannel Channel;
-		List<Commit> Commits = new List<Commit>();
+		HashSet<Commit> Commits = new HashSet<Commit>();
 		readonly string path = InitPath();
 		Timer CronTimer;
 
@@ -75,9 +75,11 @@ namespace DiscordBotWPF
 		// Entry Point for our application
 		protected override async void OnStartup(StartupEventArgs e)
 		{
-			AppDomain.CurrentDomain.FirstChanceException += CurrentDomain_FirstChanceException;
+			//AppDomain.CurrentDomain.FirstChanceException += CurrentDomain_FirstChanceException;
 
 			AddToLaunchWithWindows();
+
+			
 
 			var cfg = new DiscordConfiguration
 			{
@@ -94,12 +96,19 @@ namespace DiscordBotWPF
 
 		private void CurrentDomain_FirstChanceException(object sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
 		{
-			string dir = Path.GetDirectoryName(path);
-			string exceptionPath = Path.Combine(dir, "Exceptions.log");
-			using var stream = File.Open(exceptionPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite);
-			using var writer = new StreamWriter(stream);
-			writer.WriteLine(e.Exception);
-			writer.WriteLine(e.Exception.StackTrace + "\n");
+			try
+			{
+				//string dir = Path.GetDirectoryName(path);
+				//string exceptionPath = Path.Combine(dir, "Exceptions.log");
+				//using var stream = File.Open(exceptionPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite);
+				//using var writer = new StreamWriter(stream);
+				//writer.WriteLine(e.Exception);
+				//writer.WriteLine(e.Exception.StackTrace + "\n");
+			}
+			catch
+			{
+
+			}
 		}
 
 		// Called when we have connected to our discord and can start sending messages.
@@ -130,8 +139,8 @@ namespace DiscordBotWPF
 					SendCommit(commit);
 				}
 
-				Commits.AddRange(newCommits);
-				Commits.Sort(new CommitSorter());
+				Commits.UnionWith(newCommits);
+
 				UpdateCommitFile();
 			}
 		}
@@ -147,7 +156,7 @@ namespace DiscordBotWPF
 				var commits = formatter.Deserialize(stream) as List<Commit>;
 				if (commits is not null)
 				{
-					Commits.AddRange(commits);
+					Commits.UnionWith(commits);
 				}
 			}
 			stream.Dispose();
@@ -162,7 +171,6 @@ namespace DiscordBotWPF
 				var holder = JsonConvert.DeserializeObject<CommitHolder>(json);
 				var newCommits = holder.Results.Except(Commits, new CommitComparer()).ToArray();
 				tempCommits.AddRange(newCommits);
-
 				// If we added 24 commits when there's 50 commits per page
 				// Then that implies that we've already added the previous pages commits
 				// Hopefully they don't add 50+ commits in one day
@@ -181,8 +189,7 @@ namespace DiscordBotWPF
 				SendCommit(commit);
 			}
 
-			Commits.AddRange(tempCommits);
-			Commits.Sort(new CommitSorter());
+			Commits.UnionWith(tempCommits);
 
 			UpdateCommitFile();
 			#endregion
@@ -223,7 +230,7 @@ namespace DiscordBotWPF
 			embed.WithThumbnailUrl(commit.User.Avatar);
 
 			DateTime.TryParse(commit.Created, out DateTime created);
-			embed.WithTimestamp(created.ToUniversalTime());
+			embed.WithTimestamp(created.ToLocalTime());
 
 			Client.SendMessageAsync(Channel, embed: embed).GetAwaiter().GetResult();
 		}
@@ -234,7 +241,7 @@ namespace DiscordBotWPF
 			using var stream = File.Open(path, FileMode.Open);
 			var formatter = new BinaryFormatter();
 			stream.SetLength(0);
-			formatter.Serialize(stream, Commits);
+			formatter.Serialize(stream, Commits.ToList());
 		}
 
 		public void Dispose()
