@@ -32,7 +32,7 @@ namespace DiscordBotWPF
 		DiscordClient Client;
 		DiscordChannel Channel;
 		HashSet<Commit> Commits = new HashSet<Commit>();
-		readonly string path = InitPath();
+		readonly string CommitsPath = InitPath();
 		Timer CronTimer;
 
 		private static string InitPath()
@@ -43,7 +43,7 @@ namespace DiscordBotWPF
 			{
 				Directory.CreateDirectory(folder);
 			}
-			var path = Path.Combine(folder, "commits.dat");
+			var path = Path.Combine(folder, "commits.json");
 			if (!File.Exists(path))
 			{
 				File.Create(path).Dispose();
@@ -66,7 +66,7 @@ namespace DiscordBotWPF
 		{
 			this.Dispose();
 
-			UpdateCommitFile();
+			TryUpdateCommitFile();
 
 
 			base.OnExit(e);
@@ -134,14 +134,12 @@ namespace DiscordBotWPF
 				var commits = JsonConvert.DeserializeObject<CommitHolder>(json);
 				var newCommits = commits.Results.Except(Commits, new CommitComparer()).ToArray();
 				Array.Sort(newCommits, new CommitSorter());
+				TryUpdateCommitFile();
+				Commits.UnionWith(newCommits);
 				foreach (var commit in newCommits)
 				{
 					SendCommit(commit);
 				}
-
-				Commits.UnionWith(newCommits);
-
-				UpdateCommitFile();
 			}
 		}
 
@@ -149,11 +147,11 @@ namespace DiscordBotWPF
 		{
 
 			#region Retrieve previous sessions commits
-			var stream = File.OpenRead(path);
-			var formatter = new BinaryFormatter();
+			var stream = File.OpenRead(CommitsPath);
 			if (stream.Length > 0)
 			{
-				var commits = formatter.Deserialize(stream) as List<Commit>;
+				using var reader = new StreamReader(stream);
+				var commits = JsonConvert.DeserializeObject<HashSet<Commit>>(reader.ReadToEnd());
 				if (commits is not null)
 				{
 					Commits.UnionWith(commits);
@@ -191,7 +189,7 @@ namespace DiscordBotWPF
 
 			Commits.UnionWith(tempCommits);
 
-			UpdateCommitFile();
+			TryUpdateCommitFile();
 			#endregion
 		}
 
@@ -236,12 +234,18 @@ namespace DiscordBotWPF
 		}
 
 
-		private void UpdateCommitFile()
+		private void TryUpdateCommitFile()
 		{
-			using var stream = File.Open(path, FileMode.Open);
-			var formatter = new BinaryFormatter();
-			stream.SetLength(0);
-			formatter.Serialize(stream, Commits.ToList());
+			try
+			{
+				using var stream = File.Open(CommitsPath, FileMode.Open);
+				stream.SetLength(0);
+				using var writer = new StreamWriter(stream)
+				{
+					AutoFlush = true
+				};
+				writer.Write(JsonConvert.SerializeObject(Commits, Formatting.Indented));
+			} catch{ }
 		}
 
 		public void Dispose()
